@@ -95,7 +95,7 @@ def send_whatsapp_message(message: str):
     url = f"https://api.ultramsg.com/{instance}/messages/chat"
     payload = {
         "token": token,
-        "to": f"+92{user_data['number']}",
+        "to": f"+{user_data['number']}",
         "body": message,
     }
     res = requests.post(url, data=payload)
