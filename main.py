@@ -17,6 +17,7 @@ from agents import (
 load_dotenv()
 api = os.getenv("OPENAI_KEY")
 token = os.getenv("TOKEN")
+instance = os.getenv("INSTANCE")
 
 # Streamlit UI customization with custom CSS
 st.markdown(
@@ -89,7 +90,7 @@ user_data = {
 # WhatsApp tool
 @function_tool
 def send_whatsapp_message():
-    url = "https://api.ultramsg.com/instance131802/messages/chat"
+    url = f"https://api.ultramsg.com/{instance}/messages/chat"
     payload = {
         "token": token,
         "to": f"+92{user_data['number']}",
@@ -148,7 +149,7 @@ async def main():
             f"🎂 Age: {match['age']}\n"
             f"💼 Profession: {match['profession']}\n"
             f"🎓 Education: {match['education']}\n"
-            f"📍 Location: {match['location']}"
+            f"📍 Location: {match.get('location', 'Not Provided')}"  # Safely handle missing 'location'
         )
     else:
         match_info = "❌ No suitable match found."
