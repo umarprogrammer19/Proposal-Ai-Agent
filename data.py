@@ -1,13 +1,6 @@
 rishtas = [
     # Female Rishtas (50)
     {
-        "name": "Ayesha",
-        "age": 18,
-        "gender": "Female",
-        "profession": "Designer",
-        "education": "BSCS",
-    },
-    {
         "name": "Fatima",
         "age": 20,
         "gender": "Female",
