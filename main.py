@@ -1,10 +1,9 @@
 import os
 import asyncio
 import requests
-import random
 from dotenv import load_dotenv
 import streamlit as st
-from data import rishtas  # Ensure this points to your 'rishtas' data file
+from data import rishtas
 from agents import (
     AsyncOpenAI,
     OpenAIChatCompletionsModel,
@@ -53,13 +52,22 @@ st.markdown(
     "Enter your details to find a compatible rishta. We'll send the match details to your WhatsApp!"
 )
 
-# Input form
+# Input form with location added
 with st.form("rishta_form"):
     name = st.text_input("Your Name", placeholder="e.g., Ali Khan")
     age = st.number_input("Your Age", min_value=18, max_value=100, step=1)
     gender = st.selectbox("Your Gender", ["Male", "Female"])
     profession = st.text_input("Your Profession", placeholder="e.g., Engineer")
     education = st.text_input("Your Education", placeholder="e.g., Bachelor's")
+    locations = [
+        "Karachi",
+        "Lahore",
+        "Islamabad",
+        "Rawalpindi",
+        "Faisalabad",
+        "Peshawar",
+    ]
+    location = st.selectbox("Your Location", locations)
     number = st.text_input(
         "WhatsApp Number (10 digits, no +92)",
         max_chars=10,
@@ -70,19 +78,8 @@ with st.form("rishta_form"):
     )
     submit_button = st.form_submit_button("Find Match & Send to WhatsApp")
 
-# User data
-user_data = {
-    "name": name,
-    "age": age,
-    "gender": gender,
-    "profession": profession,
-    "education": education,
-    "number": number,
-    "message": message.replace("\n", " ") if message else "",
-}
 
-
-# WhatsApp tool updated to accept message parameter
+# WhatsApp sending tool
 @function_tool
 def send_whatsapp_message(message: str):
     url = f"https://api.ultramsg.com/{instance}/messages/chat"
@@ -95,7 +92,7 @@ def send_whatsapp_message(message: str):
     return res.text
 
 
-# Agent setup
+# Agent setup with enhanced instructions
 external_agent = AsyncOpenAI(
     api_key=api, base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
@@ -106,64 +103,99 @@ config = RunConfig(model=model, model_provider=external_agent, tracing_disabled=
 
 agent = Agent(
     name="Rishta_Bot",
-    instructions="""You are Rishta Bot, designed to find the best match for the user from a list of potential rishtas based on compatibility.
+    instructions="""You are Rishta Bot, an advanced matchmaking assistant designed to find the best possible match for the user from a list of potential rishtas based on compatibility.
 
-    - Consider factors like age, profession, education, and location (if available) to assess compatibility.
-    - Select the most suitable rishta from the opposite gender and explain why it’s a good match.
-    - Construct a WhatsApp message with the user’s details and the selected rishta’s details in a clear format.
-    - If the user provided an intro message, include it as 'Intro: [message]' in the WhatsApp message.
-    - Send the message using the `send_whatsapp_message` tool with the constructed message as the argument.
-    - If no suitable match is found, send a message informing the user.
-    - Confirm after sending that the message was sent.""",
+    - Assess compatibility using these factors:
+      * Age: Prefer matches within a 5-year age difference when possible
+      * Profession: Consider similar or complementary career fields
+      * Education: Look for comparable education levels
+      * Location: Strongly prefer matches from the same location unless none are available
+    - Select the most suitable rishta from the opposite gender
+    - Provide a clear explanation of why the selected match is compatible
+    - Construct a WhatsApp message with:
+      * User's details
+      * Selected rishta's details
+      * Intro message (if provided) as 'Intro: [message]'
+    - Use the `send_whatsapp_message` tool to send the message
+    - If no suitable match is found, send a message stating: "Sorry, no compatible matches found at this time."
+    - Confirm message sending with: "Message successfully sent to WhatsApp"
+    """,
     tools=[send_whatsapp_message],
 )
 
 
-# Main logic with AI agent
-async def main():
+# Main logic with location-based matching
+async def main(user_data):
     opposite_gender = "Female" if user_data["gender"] == "Male" else "Male"
-    eligible_matches = [r for r in rishtas if r["gender"] == opposite_gender]
 
-    # Randomly select one match
-    match = random.choice(eligible_matches) if eligible_matches else None
+    # First try matches from same location
+    same_location_matches = [
+        r
+        for r in rishtas
+        if r["gender"] == opposite_gender and r["location"] == user_data["location"]
+    ]
 
-    if match:
-        match_info = (
-            f"🌟 *Match Found!*\n"
-            f"👤 Name: {match['name']}\n"
-            f"🎂 Age: {match['age']}\n"
-            f"💼 Profession: {match['profession']}\n"
-            f"🎓 Education: {match['education']}\n"
-            f"📍 Location: {match.get('location', 'Not Provided')}"
-        )
+    if same_location_matches:
+        eligible_matches = same_location_matches
+        location_note = "These matches are from the same location as the user."
     else:
-        match_info = "❌ No suitable match found."
+        eligible_matches = [r for r in rishtas if r["gender"] == opposite_gender]
+        location_note = "No matches found in the same location; showing matches from other locations."
 
-    # WhatsApp message to be sent
-    full_message = (
-        f"📋 *Your Info:*\n"
-        f"Name: {user_data['name']}\n"
-        f"Age: {user_data['age']}\n"
-        f"Gender: {user_data['gender']}\n"
-        f"Profession: {user_data['profession']}\n"
-        f"Education: {user_data['education']}\n\n"
-        f"{match_info}"
+    # Format eligible matches for the agent
+    eligible_matches_str = "\n".join(
+        [
+            f"{i+1}. Name: {r['name']}, Age: {r['age']}, Profession: {r['profession']}, Education: {r['education']}, Location: {r['location']}"
+            for i, r in enumerate(eligible_matches)
+        ]
     )
 
-    # Save message to global user_data for the tool to use
-    user_data["message"] = full_message
+    # Detailed prompt for the agent
+    prompt = f"""
+You are Rishta Bot. The user has provided the following details:
 
-    prompt = f"Please send the following message on WhatsApp using the tool:\n\n{full_message}"
+Name: {user_data['name']}
+Age: {user_data['age']}
+Gender: {user_data['gender']}
+Profession: {user_data['profession']}
+Education: {user_data['education']}
+Location: {user_data['location']}
+Intro message: {user_data['message'] if user_data['message'] else 'None'}
+
+{location_note}
+
+Here is the list of eligible matches from the opposite gender:
+
+{eligible_matches_str}
+
+Your task is to:
+1. Select the most compatible match based on age (prefer within 5 years), profession (similar/complementary), education (comparable level), and location (same location preferred)
+2. Explain why this match was chosen
+3. Construct and send a WhatsApp message with both user and match details
+4. Confirm the message was sent
+If no suitable match exists, inform the user appropriately.
+"""
 
     result = await Runner.run(agent, prompt, run_config=config)
-    return full_message, result.final_output
+    return result.final_output
 
 
-# Execution on button click
+# Process form submission
 if submit_button:
+    user_data = {
+        "name": name,
+        "age": age,
+        "gender": gender,
+        "profession": profession,
+        "education": education,
+        "location": location,
+        "number": number,
+        "message": message.replace("\n", " ") if message else "",
+    }
+
     if not api or not token:
         st.error("API Key or Token is missing.")
-    elif not all([name, age, gender, profession, education, number]):
+    elif not all([name, age, gender, profession, education, location, number]):
         st.warning("Please fill in all required fields.")
     else:
         number = number.replace(" ", "").replace("-", "")
@@ -171,7 +203,7 @@ if submit_button:
             st.error("Enter a valid 10-digit WhatsApp number.")
         else:
             with st.spinner("Finding your match..."):
-                reasoning = asyncio.run(main())
+                reasoning = asyncio.run(main(user_data))
             st.success("✅ Message sent to WhatsApp!")
             st.markdown("### 🧠 Agent Reasoning:")
             st.write(reasoning)
