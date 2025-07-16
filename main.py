@@ -55,7 +55,7 @@ st.markdown(
 # Input form with custom prompt
 with st.form("rishta_form"):
     st.markdown("### Your Details")
-    name = st.text_input("Your Name", placeholder="e.g., Ammar")
+    name = st.text_input("Your Name", placeholder="Your Name")
     age = st.number_input("Your Age", min_value=18, max_value=100, step=1)
     gender = st.selectbox("Your Gender", ["Male", "Female"])
     profession = st.text_input("Your Profession", placeholder="e.g., Developer")
@@ -65,14 +65,14 @@ with st.form("rishta_form"):
         ["Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad", "Peshawar"],
     )
     number = st.text_input(
-        "WhatsApp Number (10 digits, no +92)",
-        max_chars=10,
-        placeholder="e.g., 3001234567",
+        "WhatsApp Number with country code without +",
+        max_chars=18,
+        placeholder="e.g., 923121234567",
     )
     st.markdown("### Match Preferences")
     custom_prompt = st.text_area(
         "Custom Match Preferences",
-        placeholder="e.g., I want a partner older than me, AI Engineer from Islamabad",
+        placeholder="e.g., I want a partner older than me, Software Engineer from Karachi",
     )
     submit_button = st.form_submit_button("Find Match & Send to WhatsApp")
 
@@ -192,8 +192,8 @@ if submit_button:
         st.warning("Please fill in all required fields.")
     else:
         number = number.replace(" ", "").replace("-", "")
-        if len(number) != 10 or not number.isdigit():
-            st.error("Enter a valid 10-digit WhatsApp number.")
+        if len(number) > 18 or not number.isdigit():
+            st.error("Enter a valid WhatsApp number.")
         else:
             with st.spinner("Finding your match..."):
                 reasoning = asyncio.run(main(user_data))
