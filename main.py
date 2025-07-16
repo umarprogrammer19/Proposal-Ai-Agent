@@ -3,7 +3,6 @@ import asyncio
 import requests
 from dotenv import load_dotenv
 import streamlit as st
-from data import rishtas
 from agents import (
     AsyncOpenAI,
     OpenAIChatCompletionsModel,
@@ -12,6 +11,7 @@ from agents import (
     Runner,
     function_tool,
 )
+from data import rishtas
 
 # Load environment variables
 load_dotenv()
@@ -102,7 +102,7 @@ def send_whatsapp_message(message: str):
     return res.text
 
 
-# Agent setup with enhanced instructions
+# Agent setup with updated instructions
 external_agent = AsyncOpenAI(
     api_key=api, base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
@@ -118,13 +118,20 @@ agent = Agent(
     - Strictly interpret and enforce the user's custom prompt (e.g., 'I want a partner older than me, AI Engineer from Islamabad').
     - Only select matches from the opposite gender.
     - Extract specific criteria from the custom prompt, such as:
-      * Age preferences (e.g., older, younger, same age)
+      * Age preferences (e.g., older, younger, same age, specific age)
       * Specific profession (e.g., AI Engineer)
       * Specific location (e.g., Islamabad)
-    - If the prompt specifies a profession, match it exactly (case-insensitive).
-    - If the prompt specifies a location, match it exactly unless 'any location' is mentioned.
-    - If the prompt specifies an age preference, filter matches accordingly.
-    - If no match meets ALL criteria in the custom prompt, return: 'No match found in the data. Try adjusting your preferences.'
+    - For age:
+      * If the prompt specifies an age preference, filter matches accordingly.
+      * If no age preference is specified, assume the user wants a match within 3 years of their own age.
+    - For location:
+      * If the prompt specifies a location, match it exactly unless 'any location' is mentioned.
+      * If no location is specified, prefer matches from the same location as the user.
+    - For profession:
+      * If the prompt specifies a profession, match it exactly (case-insensitive).
+      * If no profession is specified, use the user's provided profession for filtering, or if that's also not available, do not apply a profession filter.
+    - Select only matches that satisfy ALL specified criteria and default filters where applicable.
+    - If no match meets all the criteria, return: 'No match found in the data. Try adjusting your preferences.'
     - Do NOT include the list of potential matches in the output or reasoning.
     - When a match is found, construct a WhatsApp message with:
       * User's details (name, age, gender, profession, education, location)
@@ -140,60 +147,68 @@ agent = Agent(
 # Main logic with strict prompt-based matching
 async def main(user_data):
     opposite_gender = "Female" if user_data["gender"] == "Male" else "Male"
+    user_age = user_data["age"]
+    user_profession = user_data["profession"].lower()
+    user_location = user_data["location"]
 
-    # Filter matches based on gender
-    all_matches = [r for r in rishtas if r["gender"] == opposite_gender]
-
-    # Check if the user has given a custom age preference and filter matches based on that
-    min_age_diff = 0
-    max_age_diff = 4
-
-    filtered_matches = []
-
-    for match in all_matches:
-        # Age difference logic
-        age_diff = abs(user_data["age"] - match["age"])
-
-        # If the user has specified no specific preferences (empty prompt) then only filter by age and gender
-        if user_data["custom_prompt"]:
-            # Apply additional custom prompt filtering logic here (location, profession, etc.)
+    # --- Pre-filtering the rishtas data ---
+    # Filter by opposite gender and default age range (3 years difference)
+    pre_filtered_matches = []
+    for r in rishtas:
+        if r["gender"] == opposite_gender:
+            # Apply default age range if no specific age preference is mentioned in custom_prompt
+            # This logic will be handled by the agent more granularly but we apply a reasonable
+            # initial filter to reduce the search space.
             if (
-                user_data["custom_prompt"].lower() in match["profession"].lower()
-                or not user_data["custom_prompt"]
-            ) and min_age_diff <= age_diff <= max_age_diff:
-                filtered_matches.append(match)
-        else:
-            if min_age_diff <= age_diff <= max_age_diff:
-                filtered_matches.append(match)
+                abs(r["age"] - user_age) <= 4
+            ):  # Increased range slightly to 4 years to avoid too strict initial filter
+                pre_filtered_matches.append(r)
 
-    # If no valid matches, return a message to the user
-    if not filtered_matches:
-        return "No match found in the data. Try adjusting your preferences."
+    # Now, the agent will process this pre_filtered_matches list
+    matches_str = (
+        "\n".join(
+            [
+                f"Name: {r['name']}, Age: {r['age']}, Profession: {r['profession']}, Education: {r['education']}, Location: {r['location']}"
+                for r in pre_filtered_matches
+            ]
+        )
+        if pre_filtered_matches
+        else "No suitable initial matches found based on gender and general age range."
+    )
 
-    # Choose the best match (assuming the first match is the best for simplicity)
-    best_match = filtered_matches[0]
+    # Detailed prompt for the agent
+    prompt = f"""
+You are Rishta Bot. The user has provided the following details:
 
-    # Construct the message with the best match details
-    message = f"**Your Match Found!**\n\n"
-    message += f"Name: {best_match['name']}\n"
-    message += f"Age: {best_match['age']}\n"
-    message += f"Profession: {best_match['profession']}\n"
-    message += f"Education: {best_match['education']}\n"
-    message += f"Location: {best_match['location']}\n\n"
-    message += f"**Your Details:**\n"
-    message += f"Name: {user_data['name']}\n"
-    message += f"Age: {user_data['age']}\n"
-    message += f"Profession: {user_data['profession']}\n"
-    message += f"Education: {user_data['education']}\n"
-    message += f"Location: {user_data['location']}\n\n"
-    message += f"This match was chosen based on a {age_diff} year age difference and your custom preferences (if any)."
+Name: {user_data['name']}
+Age: {user_data['age']}
+Gender: {user_data['gender']}
+Profession: {user_data['profession']}
+Education: {user_data['education']}
+Location: {user_data['location']}
+Custom Prompt: {user_data['custom_prompt'] if user_data['custom_prompt'] else 'No specific preferences provided'}
 
-    # Use the send_whatsapp_message tool via the agent
-    response = await Runner.run(agent, {"message": message}, run_config=config)
+Available Matches (opposite gender, pre-filtered by a general age range (user_age +/- 4 years) and gender):
+{matches_str}
 
-    return (
-        response.final_output
-    )  # The agent should handle sending the message automatically
+Your task is to:
+1. Carefully interpret the 'Custom Prompt' to extract **strict** criteria for age, profession, and location.
+2. If the 'Custom Prompt' specifies an **age preference**, override the default age range and apply it strictly (e.g., "older than me", "exactly 25"). If no age preference is in the custom prompt, apply a strict age filter of **+/- 3 years** from the user's age.
+3. If the 'Custom Prompt' specifies a **profession**, match it exactly (case-insensitive). If no profession is specified in the custom prompt, *and* the user provided their own profession, prioritize finding a match with a similar profession. If neither is specified, do not filter by profession.
+4. If the 'Custom Prompt' specifies a **location**, match it exactly. If no location is specified in the custom prompt, prefer matches from the user's same location.
+5. From the "Available Matches" list, **select only ONE best match** that satisfies ALL criteria derived from the custom prompt and default rules. Prioritize exact matches for custom prompt criteria.
+6. If no match meets ALL the criteria, return: 'No match found in the data. Try adjusting your preferences.'
+7. Do NOT include the list of potential matches in the output or reasoning.
+8. For a valid match, construct a WhatsApp message with:
+    * User's details (name, age, gender, profession, education, location)
+    * Match's details (name, age, profession, education, location)
+    * A brief, clear reasoning for the match, explicitly stating how the match meets the user's preferences (e.g., "This match was chosen because [Match Name] is a [Match Profession] from [Match Location], which aligns with your preference for a [User Profession] and [User Location], and is within your preferred age range.").
+9. Send the message using the send_whatsapp_message tool.
+10. Confirm the message was sent with: 'Message successfully sent to WhatsApp.'
+"""
+
+    result = await Runner.run(agent, prompt, run_config=config)
+    return result.final_output
 
 
 # Process form submission
