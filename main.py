@@ -1,9 +1,10 @@
 import os
 import asyncio
 import requests
+import random
 from dotenv import load_dotenv
 import streamlit as st
-from data import rishtas  
+from data import rishtas  # Ensure this points to your 'rishtas' data file
 from agents import (
     AsyncOpenAI,
     OpenAIChatCompletionsModel,
@@ -123,34 +124,39 @@ async def main():
     opposite_gender = "Female" if user_data["gender"] == "Male" else "Male"
     eligible_matches = [r for r in rishtas if r["gender"] == opposite_gender]
 
-    matches_str = (
-        "\n".join(
-            [
-                f"{i+1}. Name: {r['name']}, Age: {r['age']}, Gender: {r['gender']}, Profession: {r['profession']}, Education: {r['education']}, Location: {r.get('location', 'Not Provided')}"
-                for i, r in enumerate(eligible_matches)
-            ]
+    # Randomly select one match
+    match = random.choice(eligible_matches) if eligible_matches else None
+
+    if match:
+        match_info = (
+            f"🌟 *Match Found!*\n"
+            f"👤 Name: {match['name']}\n"
+            f"🎂 Age: {match['age']}\n"
+            f"💼 Profession: {match['profession']}\n"
+            f"🎓 Education: {match['education']}\n"
+            f"📍 Location: {match.get('location', 'Not Provided')}"
         )
-        if eligible_matches
-        else "No matches available."
+    else:
+        match_info = "❌ No suitable match found."
+
+    # WhatsApp message to be sent
+    full_message = (
+        f"📋 *Your Info:*\n"
+        f"Name: {user_data['name']}\n"
+        f"Age: {user_data['age']}\n"
+        f"Gender: {user_data['gender']}\n"
+        f"Profession: {user_data['profession']}\n"
+        f"Education: {user_data['education']}\n\n"
+        f"{match_info}"
     )
 
-    prompt = f"""
-    User Details:
-    Name: {user_data['name']}
-    Age: {user_data['age']}
-    Gender: {user_data['gender']}
-    Profession: {user_data['profession']}
-    Education: {user_data['education']}
-    Message: {user_data['message'] if user_data['message'] else 'None'}
+    # Save message to global user_data for the tool to use
+    user_data["message"] = full_message
 
-    Potential Matches:
-    {matches_str}
-
-    Select the best match and follow your instructions.
-    """
+    prompt = f"Please send the following message on WhatsApp using the tool:\n\n{full_message}"
 
     result = await Runner.run(agent, prompt, run_config=config)
-    return result.final_output
+    return full_message, result.final_output
 
 
 # Execution on button click
