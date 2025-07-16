@@ -141,47 +141,59 @@ agent = Agent(
 async def main(user_data):
     opposite_gender = "Female" if user_data["gender"] == "Male" else "Male"
 
-    # Format all matches for the agent (not shown to user)
+    # Filter matches based on gender
     all_matches = [r for r in rishtas if r["gender"] == opposite_gender]
 
-    matches_str = (
-        "\n".join(
-            [
-                f"Name: {r['name']}, Age: {r['age']}, Profession: {r['profession']}, Education: {r['education']}, Location: {r['location']}"
-                for r in all_matches
-            ]
-        )
-        if all_matches
-        else "No matches available."
-    )
+    # Check if the user has given a custom age preference and filter matches based on that
+    min_age_diff = 0
+    max_age_diff = 4
 
-    # Detailed prompt for the agent
-    prompt = f"""
-You are Rishta Bot. The user has provided the following details:
+    filtered_matches = []
 
-Name: {user_data['name']}
-Age: {user_data['age']}
-Gender: {user_data['gender']}
-Profession: {user_data['profession']}
-Education: {user_data['education']}
-Location: {user_data['location']}
-Custom Prompt: {user_data['custom_prompt'] if user_data['custom_prompt'] else 'No specific preferences provided'}
+    for match in all_matches:
+        # Age difference logic
+        age_diff = abs(user_data["age"] - match["age"])
 
-Available Matches (opposite gender):
-{matches_str}
+        # If the user has specified no specific preferences (empty prompt) then only filter by age and gender
+        if user_data["custom_prompt"]:
+            # Apply additional custom prompt filtering logic here (location, profession, etc.)
+            if (
+                user_data["custom_prompt"].lower() in match["profession"].lower()
+                or not user_data["custom_prompt"]
+            ) and min_age_diff <= age_diff <= max_age_diff:
+                filtered_matches.append(match)
+        else:
+            if min_age_diff <= age_diff <= max_age_diff:
+                filtered_matches.append(match)
 
-Your task is to:
-1. Interpret the custom prompt and extract specific criteria (e.g., age, profession, location).
-2. Select the best match that satisfies ALL criteria in the custom prompt.
-3. If no match meets all criteria, return: 'No match found in the data. Try adjusting your preferences.'
-4. Do NOT include the list of potential matches in the output or reasoning.
-5. For a valid match, construct a WhatsApp message with user details, match details, and brief reasoning.
-6. Send the message using the send_whatsapp_message tool.
-7. Confirm the message was sent with: 'Message successfully sent to WhatsApp.'
-"""
+    # If no valid matches, return a message to the user
+    if not filtered_matches:
+        return "No match found in the data. Try adjusting your preferences."
 
-    result = await Runner.run(agent, prompt, run_config=config)
-    return result.final_output
+    # Choose the best match (assuming the first match is the best for simplicity)
+    best_match = filtered_matches[0]
+
+    # Construct the message with the best match details
+    message = f"**Your Match Found!**\n\n"
+    message += f"Name: {best_match['name']}\n"
+    message += f"Age: {best_match['age']}\n"
+    message += f"Profession: {best_match['profession']}\n"
+    message += f"Education: {best_match['education']}\n"
+    message += f"Location: {best_match['location']}\n\n"
+    message += f"**Your Details:**\n"
+    message += f"Name: {user_data['name']}\n"
+    message += f"Age: {user_data['age']}\n"
+    message += f"Profession: {user_data['profession']}\n"
+    message += f"Education: {user_data['education']}\n"
+    message += f"Location: {user_data['location']}\n\n"
+    message += f"This match was chosen based on a {age_diff} year age difference and your custom preferences (if any)."
+
+    # Use the send_whatsapp_message tool via the agent
+    response = await Runner.run(agent, {"message": message}, run_config=config)
+
+    return (
+        response.final_output
+    )  # The agent should handle sending the message automatically
 
 
 # Process form submission
