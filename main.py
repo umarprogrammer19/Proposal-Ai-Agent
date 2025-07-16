@@ -45,6 +45,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 # Streamlit UI
 st.title("**Rishta Bot 💌 - Find Your Perfect Match!**")
 st.markdown(
@@ -54,11 +55,11 @@ st.markdown(
 # Input form with custom prompt
 with st.form("rishta_form"):
     st.markdown("### Your Details")
-    name = st.text_input("Your Name", placeholder="e.g., Ali Khan")
+    name = st.text_input("Your Name", placeholder="e.g., Ammar")
     age = st.number_input("Your Age", min_value=18, max_value=100, step=1)
     gender = st.selectbox("Your Gender", ["Male", "Female"])
-    profession = st.text_input("Your Profession", placeholder="e.g., Student")
-    education = st.text_input("Your Education", placeholder="e.g., Bachelor's")
+    profession = st.text_input("Your Profession", placeholder="e.g., Developer")
+    education = st.text_input("Your Education", placeholder="e.g., BSCS")
     location = st.selectbox(
         "Your Location",
         ["Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad", "Peshawar"],
@@ -71,7 +72,7 @@ with st.form("rishta_form"):
     st.markdown("### Match Preferences")
     custom_prompt = st.text_area(
         "Custom Match Preferences",
-        placeholder="e.g., Find your perfect match with respect, compatibility, and trust. Her age is greater than me and I need an AI Engineer from Islamabad.",
+        placeholder="e.g., I want a partner older than me, AI Engineer from Islamabad",
     )
     submit_button = st.form_submit_button("Find Match & Send to WhatsApp")
 
@@ -114,7 +115,7 @@ agent = Agent(
     name="Rishta_Bot",
     instructions="""You are Rishta Bot, an advanced matchmaking assistant designed to find the best match for the user based on their custom prompt and provided details.
 
-    - Strictly interpret and enforce the user's custom prompt (e.g., 'Her age is greater than me and I need an AI Engineer from Islamabad').
+    - Strictly interpret and enforce the user's custom prompt (e.g., 'I want a partner older than me, AI Engineer from Islamabad').
     - Only select matches from the opposite gender.
     - Extract specific criteria from the custom prompt, such as:
       * Age preferences (e.g., older, younger, same age)
@@ -124,11 +125,12 @@ agent = Agent(
     - If the prompt specifies a location, match it exactly unless 'any location' is mentioned.
     - If the prompt specifies an age preference, filter matches accordingly.
     - If no match meets ALL criteria in the custom prompt, return: 'No match found in the data. Try adjusting your preferences.'
+    - Do NOT include the list of potential matches in the output or reasoning.
     - When a match is found, construct a WhatsApp message with:
       * User's details (name, age, gender, profession, education, location)
       * Match's details (name, age, profession, education, location)
-      * Reasoning for the match
-    - Use the `send_whatsapp_message` tool to send the message.
+      * Brief reasoning for the match (e.g., 'This match was chosen because...')
+    - Use the send_whatsapp_message tool to send the message.
     - Confirm the message was sent with: 'Message successfully sent to WhatsApp.'
     """,
     tools=[send_whatsapp_message],
@@ -139,7 +141,7 @@ agent = Agent(
 async def main(user_data):
     opposite_gender = "Female" if user_data["gender"] == "Male" else "Male"
 
-    # Format all matches for the agent
+    # Format all matches for the agent (not shown to user)
     all_matches = [r for r in rishtas if r["gender"] == opposite_gender]
 
     matches_str = (
@@ -172,9 +174,10 @@ Your task is to:
 1. Interpret the custom prompt and extract specific criteria (e.g., age, profession, location).
 2. Select the best match that satisfies ALL criteria in the custom prompt.
 3. If no match meets all criteria, return: 'No match found in the data. Try adjusting your preferences.'
-4. For a valid match, construct a WhatsApp message with user details, match details, and reasoning.
-5. Send the message using the `send_whatsapp_message` tool.
-6. Confirm the message was sent.
+4. Do NOT include the list of potential matches in the output or reasoning.
+5. For a valid match, construct a WhatsApp message with user details, match details, and brief reasoning.
+6. Send the message using the send_whatsapp_message tool.
+7. Confirm the message was sent with: 'Message successfully sent to WhatsApp.'
 """
 
     result = await Runner.run(agent, prompt, run_config=config)
