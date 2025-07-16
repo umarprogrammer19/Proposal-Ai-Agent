@@ -45,38 +45,47 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
 # Streamlit UI
 st.title("**Rishta Bot 💌 - Find Your Perfect Match!**")
 st.markdown(
-    "Enter your details to find a compatible rishta. We'll send the match details to your WhatsApp!"
+    "Enter your details and preferences to find a compatible rishta. We'll send the match details to your WhatsApp!"
 )
 
-# Input form with location added
+# Input form with custom prompt
 with st.form("rishta_form"):
+    st.markdown("### Your Details")
     name = st.text_input("Your Name", placeholder="e.g., Ali Khan")
     age = st.number_input("Your Age", min_value=18, max_value=100, step=1)
     gender = st.selectbox("Your Gender", ["Male", "Female"])
-    profession = st.text_input("Your Profession", placeholder="e.g., Engineer")
+    profession = st.text_input("Your Profession", placeholder="e.g., Student")
     education = st.text_input("Your Education", placeholder="e.g., Bachelor's")
-    locations = [
-        "Karachi",
-        "Lahore",
-        "Islamabad",
-        "Rawalpindi",
-        "Faisalabad",
-        "Peshawar",
-    ]
-    location = st.selectbox("Your Location", locations)
+    location = st.selectbox(
+        "Your Location",
+        ["Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad", "Peshawar"],
+    )
     number = st.text_input(
         "WhatsApp Number (10 digits, no +92)",
         max_chars=10,
         placeholder="e.g., 3001234567",
     )
-    message = st.text_area(
-        "Your Intro (Optional)", placeholder="Tell us about yourself..."
+    st.markdown("### Match Preferences")
+    custom_prompt = st.text_area(
+        "Custom Match Preferences",
+        placeholder="e.g., Find your perfect match with respect, compatibility, and trust. Her age is greater than me and I need an AI Engineer from Islamabad.",
     )
     submit_button = st.form_submit_button("Find Match & Send to WhatsApp")
+
+# User data
+user_data = {
+    "name": name,
+    "age": age,
+    "gender": gender,
+    "profession": profession,
+    "education": education,
+    "location": location,
+    "number": number,
+    "custom_prompt": custom_prompt,
+}
 
 
 # WhatsApp sending tool
@@ -103,51 +112,45 @@ config = RunConfig(model=model, model_provider=external_agent, tracing_disabled=
 
 agent = Agent(
     name="Rishta_Bot",
-    instructions="""You are Rishta Bot, an advanced matchmaking assistant designed to find the best possible match for the user from a list of potential rishtas based on compatibility.
+    instructions="""You are Rishta Bot, an advanced matchmaking assistant designed to find the best match for the user based on their custom prompt and provided details.
 
-    - Assess compatibility using these factors:
-      * Age: Prefer matches within a 5-year age difference when possible
-      * Profession: Consider similar or complementary career fields
-      * Education: Look for comparable education levels
-      * Location: Strongly prefer matches from the same location unless none are available
-    - Select the most suitable rishta from the opposite gender
-    - Provide a clear explanation of why the selected match is compatible
-    - Construct a WhatsApp message with:
-      * User's details
-      * Selected rishta's details
-      * Intro message (if provided) as 'Intro: [message]'
-    - Use the `send_whatsapp_message` tool to send the message
-    - If no suitable match is found, send a message stating: "Sorry, no compatible matches found at this time."
-    - Confirm message sending with: "Message successfully sent to WhatsApp"
+    - Strictly interpret and enforce the user's custom prompt (e.g., 'Her age is greater than me and I need an AI Engineer from Islamabad').
+    - Only select matches from the opposite gender.
+    - Extract specific criteria from the custom prompt, such as:
+      * Age preferences (e.g., older, younger, same age)
+      * Specific profession (e.g., AI Engineer)
+      * Specific location (e.g., Islamabad)
+    - If the prompt specifies a profession, match it exactly (case-insensitive).
+    - If the prompt specifies a location, match it exactly unless 'any location' is mentioned.
+    - If the prompt specifies an age preference, filter matches accordingly.
+    - If no match meets ALL criteria in the custom prompt, return: 'No match found in the data. Try adjusting your preferences.'
+    - When a match is found, construct a WhatsApp message with:
+      * User's details (name, age, gender, profession, education, location)
+      * Match's details (name, age, profession, education, location)
+      * Reasoning for the match
+    - Use the `send_whatsapp_message` tool to send the message.
+    - Confirm the message was sent with: 'Message successfully sent to WhatsApp.'
     """,
     tools=[send_whatsapp_message],
 )
 
 
-# Main logic with location-based matching
+# Main logic with strict prompt-based matching
 async def main(user_data):
     opposite_gender = "Female" if user_data["gender"] == "Male" else "Male"
 
-    # First try matches from same location
-    same_location_matches = [
-        r
-        for r in rishtas
-        if r["gender"] == opposite_gender and r["location"] == user_data["location"]
-    ]
+    # Format all matches for the agent
+    all_matches = [r for r in rishtas if r["gender"] == opposite_gender]
 
-    if same_location_matches:
-        eligible_matches = same_location_matches
-        location_note = "These matches are from the same location as the user."
-    else:
-        eligible_matches = [r for r in rishtas if r["gender"] == opposite_gender]
-        location_note = "No matches found in the same location; showing matches from other locations."
-
-    # Format eligible matches for the agent
-    eligible_matches_str = "\n".join(
-        [
-            f"{i+1}. Name: {r['name']}, Age: {r['age']}, Profession: {r['profession']}, Education: {r['education']}, Location: {r['location']}"
-            for i, r in enumerate(eligible_matches)
-        ]
+    matches_str = (
+        "\n".join(
+            [
+                f"Name: {r['name']}, Age: {r['age']}, Profession: {r['profession']}, Education: {r['education']}, Location: {r['location']}"
+                for r in all_matches
+            ]
+        )
+        if all_matches
+        else "No matches available."
     )
 
     # Detailed prompt for the agent
@@ -160,20 +163,18 @@ Gender: {user_data['gender']}
 Profession: {user_data['profession']}
 Education: {user_data['education']}
 Location: {user_data['location']}
-Intro message: {user_data['message'] if user_data['message'] else 'None'}
+Custom Prompt: {user_data['custom_prompt'] if user_data['custom_prompt'] else 'No specific preferences provided'}
 
-{location_note}
-
-Here is the list of eligible matches from the opposite gender:
-
-{eligible_matches_str}
+Available Matches (opposite gender):
+{matches_str}
 
 Your task is to:
-1. Select the most compatible match based on age (prefer within 5 years), profession (similar/complementary), education (comparable level), and location (same location preferred)
-2. Explain why this match was chosen
-3. Construct and send a WhatsApp message with both user and match details
-4. Confirm the message was sent
-If no suitable match exists, inform the user appropriately.
+1. Interpret the custom prompt and extract specific criteria (e.g., age, profession, location).
+2. Select the best match that satisfies ALL criteria in the custom prompt.
+3. If no match meets all criteria, return: 'No match found in the data. Try adjusting your preferences.'
+4. For a valid match, construct a WhatsApp message with user details, match details, and reasoning.
+5. Send the message using the `send_whatsapp_message` tool.
+6. Confirm the message was sent.
 """
 
     result = await Runner.run(agent, prompt, run_config=config)
@@ -182,17 +183,6 @@ If no suitable match exists, inform the user appropriately.
 
 # Process form submission
 if submit_button:
-    user_data = {
-        "name": name,
-        "age": age,
-        "gender": gender,
-        "profession": profession,
-        "education": education,
-        "location": location,
-        "number": number,
-        "message": message.replace("\n", " ") if message else "",
-    }
-
     if not api or not token:
         st.error("API Key or Token is missing.")
     elif not all([name, age, gender, profession, education, location, number]):
@@ -204,8 +194,11 @@ if submit_button:
         else:
             with st.spinner("Finding your match..."):
                 reasoning = asyncio.run(main(user_data))
-            st.success("✅ Message sent to WhatsApp!")
-            st.markdown("### 🧠 Agent Reasoning:")
-            st.write(reasoning)
-            st.markdown("### 📝 Your Info:")
-            st.json(user_data)
+            if "No match found" in reasoning:
+                st.warning(reasoning)
+            else:
+                st.success("✅ Message sent to WhatsApp!")
+                st.markdown("### 🧠 Agent Reasoning:")
+                st.write(reasoning)
+                st.markdown("### 📝 Your Info:")
+                st.json(user_data)
