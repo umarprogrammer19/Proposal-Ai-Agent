@@ -201,7 +201,7 @@ Your task is to:
 """
 
     result = await Runner.run(agent, prompt, run_config=config)
-    return result.final_output
+    return result.final_output, pre_filtered_matches
 
 
 # Process form submission
