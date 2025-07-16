@@ -145,24 +145,16 @@ agent = Agent(
 
 
 # Main logic with strict prompt-based matching
-# Main logic with strict prompt-based matching
 async def main(user_data):
     opposite_gender = "Female" if user_data["gender"] == "Male" else "Male"
     user_age = user_data["age"]
-    user_profession = user_data["profession"].lower()
-    user_location = user_data["location"]
 
     # --- Pre-filtering the rishtas data ---
     # Filter by opposite gender and default age range (3 years difference)
     pre_filtered_matches = []
     for r in rishtas:
         if r["gender"] == opposite_gender:
-            # Apply default age range if no specific age preference is mentioned in custom_prompt
-            # This logic will be handled by the agent more granularly but we apply a reasonable
-            # initial filter to reduce the search space.
-            if (
-                abs(r["age"] - user_age) <= 4
-            ):  # Increased range slightly to 4 years to avoid too strict initial filter
+            if abs(r["age"] - user_age) <= 4:
                 pre_filtered_matches.append(r)
 
     # Now, the agent will process this pre_filtered_matches list
